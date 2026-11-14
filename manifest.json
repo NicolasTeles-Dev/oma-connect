@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.nicolas.oma-connect",
+  "name": "Oma Connect",
+  "version": "0.1.0",
+  "author": "Oma Connect contributors",
+  "license": "MIT",
+  "description": "A starter bar widget for a native Omarchy connection app.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Oma Connect",
+    "category": "Connectivity",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
