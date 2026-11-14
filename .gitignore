@@ -1,0 +1,4 @@
+# Local Codex and development environment metadata
+.agents/
+.aws/
+.codex/

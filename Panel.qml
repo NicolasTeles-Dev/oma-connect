@@ -8,6 +8,11 @@ Panel {
   moduleName: "io.github.nicolas.oma-connect"
   manageIpc: false
 
+  // The model is deliberately local for now. The next slice can replace this
+  // state with a service without changing the bar/panel lifecycle contract.
+  property string connectionState: "Ready"
+  property string connectionMessage: "The connection service is ready to be added."
+
   property var anchorItem: null
   property var hostWidget: null
 
@@ -55,9 +60,38 @@ Panel {
           font.bold: true
         }
 
+        Rectangle {
+          width: parent.width
+          height: Style.space(40)
+          radius: Style.space(6)
+          color: Qt.rgba(1, 1, 1, 0.08)
+
+          Row {
+            anchors.fill: parent
+            anchors.margins: Style.space(10)
+            spacing: Style.space(8)
+
+            Rectangle {
+              width: Style.space(10)
+              height: width
+              radius: width / 2
+              anchors.verticalCenter: parent.verticalCenter
+              color: "#7bd88f"
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.connectionState
+              color: root.barForeground
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.subtitle
+            }
+          }
+        }
+
         Text {
           width: parent.width
-          text: "The Omarchy connection app will appear here."
+          text: root.connectionMessage
           color: root.barForeground
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.subtitle

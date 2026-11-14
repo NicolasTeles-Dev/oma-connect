@@ -1,8 +1,9 @@
 # Oma Connect
 
 A starter Omarchy Quattro bar widget for a new, Omarchy-native connection app.
-This first version provides the plugin manifest, a bar button, and a placeholder
-panel. It does not connect to devices yet.
+The first UI slice provides a compact Oma icon bar button, a lifecycle-safe
+panel, and an explicit connection status boundary. It does not connect to
+devices yet.
 
 ## Install for development
 
@@ -27,3 +28,13 @@ installed version. The plugin requires the Omarchy Quattro shell runtime.
 Build the dedicated Omarchy connection app and then connect this widget to it.
 This project is not based on or dependent on KDE Connect. No external services,
 privileged commands, or extra dependencies are used by this scaffold.
+
+The intended architecture is:
+
+```text
+BarWidget.qml -> Panel.qml -> connection service / app
+```
+
+The bar and panel already expose the lifecycle methods Omarchy expects. The
+connection state is currently local to the UI so the transport can be designed
+without rewriting the plugin shell.
