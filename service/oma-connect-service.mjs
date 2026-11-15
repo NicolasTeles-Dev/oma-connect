@@ -28,6 +28,17 @@ const stateDirectory = path.join(
 const statePath = path.join(stateDirectory, 'paired-device.json');
 const heartbeatTimeout = 30_000;
 
+if (args.includes('--forget')) {
+  try {
+    fs.unlinkSync(statePath);
+    console.log('Oma Connect paired device forgotten');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    console.log('Oma Connect had no paired device');
+  }
+  process.exit(0);
+}
+
 function savePairedDevice(device) {
   fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
   // Keep the same inode so Quickshell's FileView watcher receives updates

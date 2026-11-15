@@ -63,3 +63,6 @@ The mobile app sends `oma.heartbeat` messages while it is running. The service
 updates `lastSeen` on each heartbeat so the panel can distinguish a live app
 from a device that was paired previously. If no heartbeat arrives for 30
 seconds, the service marks the device as disconnected.
+
+The service also accepts `--forget` to remove the saved paired device. The
+plugin uses this command from its panel instead of requiring a terminal.

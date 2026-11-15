@@ -44,6 +44,10 @@ plugin. `DeviceModel.qml` defines the first device data contract. Set `demoMode`
 `true` to preview the temporary `Oma Demo` fixture while styling the connected
 state. It defaults to `false` so the pairing screen is the normal empty state.
 
+When pairing mode is enabled, the bar panel starts the bundled Node service
+automatically. A paired device keeps the service running so heartbeat updates
+continue after pairing mode is turned off.
+
 When no device is available, the panel shows a pairing mode switch. It currently
 changes local UI state only; the future connection service will use that state
 to start and stop discovery.

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
@@ -18,8 +19,38 @@ Panel {
   property var anchorItem: null
   property var hostWidget: null
 
+  readonly property string servicePath:
+    Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.nicolas.oma-connect/service/oma-connect-service.mjs"
+  readonly property bool serviceRequired:
+    !device.paused && (device.pairingMode || device.hasDevice)
+
   DeviceModel {
     id: device
+  }
+
+  Process {
+    id: connectionService
+    command: ["node", root.servicePath, "--name", "Meu Omarchy"]
+    running: root.serviceRequired
+
+    stderr: StdioCollector {
+      onStreamFinished: {
+        if (text.trim() !== "") console.warn("oma-connect service", text.trim())
+      }
+    }
+  }
+
+  Process {
+    id: forgetProcess
+    command: ["node", root.servicePath, "--forget"]
+    onExited: device.clear()
+  }
+
+  function forgetDevice() {
+    device.paused = false
+    device.pairingMode = false
+    if (!forgetProcess.running) forgetProcess.running = true
+    else device.clear()
   }
 
   function open() {
@@ -133,6 +164,56 @@ Panel {
           color: root.panelForeground
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.subtitle
+        }
+
+        Column {
+          visible: device.hasDevice
+          width: parent.width
+          spacing: Style.space(8)
+
+          Rectangle {
+            width: parent.width
+            height: Style.space(40)
+            radius: Style.space(6)
+            color: Qt.rgba(root.panelForeground.r, root.panelForeground.g, root.panelForeground.b, 0.08)
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(12)
+              text: device.paused ? "Resume connection" : "Pause connection"
+              color: root.panelForeground
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.subtitle
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              onClicked: device.paused = !device.paused
+            }
+          }
+
+          Rectangle {
+            width: parent.width
+            height: Style.space(40)
+            radius: Style.space(6)
+            color: Qt.rgba(Commons.Color.urgent.r, Commons.Color.urgent.g, Commons.Color.urgent.b, 0.12)
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(12)
+              text: "Forget device"
+              color: root.panelForeground
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.subtitle
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              onClicked: root.forgetDevice()
+            }
+          }
         }
 
         Column {

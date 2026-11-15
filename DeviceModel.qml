@@ -16,6 +16,18 @@ QtObject {
   property bool charging: false
   property string lastUpdated: demoMode ? "Just now" : ""
   property bool pairingMode: false
+  property bool paused: false
+
+  function clear() {
+    hasDevice = false
+    demoMode = false
+    deviceName = ""
+    deviceType = ""
+    connected = false
+    batteryPercent = -1
+    charging = false
+    lastUpdated = ""
+  }
 
   readonly property string stateHome:
     Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")
@@ -46,6 +58,7 @@ QtObject {
     watchChanges: true
     printErrors: false
     onLoaded: root.applyState(text())
+    onLoadFailed: root.clear()
   }
 
   function togglePairingMode() {
@@ -53,6 +66,7 @@ QtObject {
   }
 
   readonly property string statusText: {
+    if (paused) return "Paused"
     if (!hasDevice) return "No device connected"
     return connected ? "Connected" : "Disconnected"
   }
