@@ -2,6 +2,7 @@
 
 import crypto from 'node:crypto';
 import dgram from 'node:dgram';
+import net from 'node:net';
 import os from 'node:os';
 
 const DISCOVERY_PORT = 45454;
@@ -17,6 +18,7 @@ const computerId = crypto
   .update(os.hostname())
   .digest('hex')
   .slice(0, 32);
+const pendingChallenges = new Map();
 
 function log(...values) {
   if (verbose) console.log(new Date().toISOString(), ...values);
@@ -42,6 +44,7 @@ function isDiscoveryRequest(data) {
 }
 
 const server = dgram.createSocket('udp4');
+const pairingServer = net.createServer();
 
 server.on('error', (error) => {
   console.error('Oma Connect discovery service error:', error.message);
@@ -58,13 +61,76 @@ server.on('message', (data, remote) => {
   });
 });
 
+pairingServer.on('connection', (connection) => {
+  let buffer = '';
+
+  connection.setEncoding('utf8');
+  connection.on('data', (chunk) => {
+    buffer += chunk;
+    const messages = buffer.split('\n');
+    buffer = messages.pop() ?? '';
+
+    for (const rawMessage of messages) {
+      if (!rawMessage.trim()) continue;
+
+      try {
+        const message = JSON.parse(rawMessage);
+        if (message.type === 'oma.pair.confirm') {
+          const pending = pendingChallenges.get(message.code);
+          if (!pending || pending.expiresAt < Date.now()) {
+            connection.write(`${JSON.stringify({
+              type: 'oma.pair.rejected',
+              version: PROTOCOL_VERSION,
+              reason: 'invalid_or_expired_code',
+            })}\n`);
+            continue;
+          }
+
+          pendingChallenges.delete(message.code);
+          connection.write(`${JSON.stringify({
+            type: 'oma.pair.accepted',
+            version: PROTOCOL_VERSION,
+            computerId,
+            computerName,
+          })}\n`);
+          log(`Pairing confirmed by ${connection.remoteAddress}`);
+          continue;
+        }
+
+        if (message.type !== 'oma.pair.request') continue;
+
+        const code = String(crypto.randomInt(100000, 1000000));
+        pendingChallenges.set(code, { expiresAt: Date.now() + 120000 });
+        connection.write(`${JSON.stringify({
+          type: 'oma.pair.challenge',
+          version: PROTOCOL_VERSION,
+          computerId,
+          computerName,
+          code,
+        })}\n`);
+        log(`Pairing challenge ${code} sent to ${connection.remoteAddress}`);
+      } catch {
+        connection.write(`${JSON.stringify({
+          type: 'oma.error',
+          code: 'invalid_message',
+        })}\n`);
+      }
+    }
+  });
+});
+
 server.bind(DISCOVERY_PORT, '0.0.0.0', () => {
   console.log(`Oma Connect discovery service listening on UDP ${DISCOVERY_PORT}`);
   console.log(`Advertising computer as ${computerName} (${computerId})`);
 });
 
+pairingServer.listen(SERVICE_PORT, '0.0.0.0', () => {
+  console.log(`Oma Connect pairing service listening on TCP ${SERVICE_PORT}`);
+});
+
 function shutdown() {
   server.close(() => process.exit(0));
+  pairingServer.close();
 }
 
 process.once('SIGINT', shutdown);
