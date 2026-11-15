@@ -10,8 +10,9 @@ node service/oma-connect-service.mjs --name "My Omarchy" --verbose
 ```
 
 The service listens on UDP port `45454` and answers Flutter discovery messages
-with an `oma.announce` response. It also listens on TCP port `45455` for the
-first pairing request. It uses only Node.js built-ins and has no npm dependencies.
+with an `oma.announce` response. It also listens on TCP port `45455` for
+pairing and authenticated messages. It uses only Node.js built-ins and has no
+npm dependencies.
 
 The service is intentionally separate from the QML panel. The panel reads
 connection state from this service and is the local trust boundary for pairing.

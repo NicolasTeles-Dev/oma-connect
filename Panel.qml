@@ -33,6 +33,12 @@ Panel {
     command: ["node", root.servicePath, "--name", "Meu Omarchy"]
     running: root.serviceRequired
 
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (text.trim() !== "") console.log("oma-connect service", text.trim())
+      }
+    }
+
     stderr: StdioCollector {
       onStreamFinished: {
         if (text.trim() !== "") console.warn("oma-connect service", text.trim())
