@@ -90,12 +90,9 @@ Panel {
               height: width
               radius: width / 2
               anchors.verticalCenter: parent.verticalCenter
-              color: Qt.rgba(
-                Commons.Color.accent.r,
-                Commons.Color.accent.g,
-                Commons.Color.accent.b,
-                0.7
-              )
+              color: device.connected
+                ? Qt.rgba(Commons.Color.accent.r, Commons.Color.accent.g, Commons.Color.accent.b, 0.7)
+                : Qt.rgba(Commons.Color.muted.r, Commons.Color.muted.g, Commons.Color.muted.b, 0.7)
             }
 
             Text {

@@ -55,4 +55,11 @@ Confirmation request:
 {"type":"oma.pair.confirm","version":1,"code":"482913"}
 ```
 
-The code expires after two minutes and can be confirmed once.
+The code expires after two minutes and can be confirmed once. After a
+successful confirmation, the service stores the paired device at
+`~/.local/state/oma-connect/paired-device.json` with restrictive permissions.
+
+The mobile app sends `oma.heartbeat` messages while it is running. The service
+updates `lastSeen` on each heartbeat so the panel can distinguish a live app
+from a device that was paired previously. If no heartbeat arrives for 30
+seconds, the service marks the device as disconnected.

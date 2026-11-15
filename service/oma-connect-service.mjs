@@ -2,8 +2,10 @@
 
 import crypto from 'node:crypto';
 import dgram from 'node:dgram';
+import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
+import path from 'node:path';
 
 const DISCOVERY_PORT = 45454;
 const SERVICE_PORT = 45455;
@@ -19,6 +21,40 @@ const computerId = crypto
   .digest('hex')
   .slice(0, 32);
 const pendingChallenges = new Map();
+const stateDirectory = path.join(
+  process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state'),
+  'oma-connect',
+);
+const statePath = path.join(stateDirectory, 'paired-device.json');
+const heartbeatTimeout = 30_000;
+
+function savePairedDevice(device) {
+  fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
+  // Keep the same inode so Quickshell's FileView watcher receives updates
+  // when heartbeat or disconnect state changes.
+  fs.writeFileSync(statePath, `${JSON.stringify(device, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  fs.chmodSync(statePath, 0o600);
+}
+
+function readPairedDevice() {
+  try {
+    return JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function markStaleDeviceOffline() {
+  const state = readPairedDevice();
+  if (!state || state.connected !== true || !state.lastSeen) return;
+
+  if (Date.now() - Date.parse(state.lastSeen) > heartbeatTimeout) {
+    savePairedDevice({ ...state, connected: false });
+    log('Marked paired device as disconnected');
+  }
+}
 
 function log(...values) {
   if (verbose) console.log(new Date().toISOString(), ...values);
@@ -75,6 +111,23 @@ pairingServer.on('connection', (connection) => {
 
       try {
         const message = JSON.parse(rawMessage);
+        if (message.type === 'oma.discover') {
+          connection.write(`${announcement().toString()}\n`);
+          continue;
+        }
+
+        if (message.type === 'oma.heartbeat') {
+          savePairedDevice({
+            connected: true,
+            computerId,
+            computerName,
+            mobileDevice: message.device ?? {},
+            pairedAt: message.pairedAt ?? new Date().toISOString(),
+            lastSeen: new Date().toISOString(),
+          });
+          continue;
+        }
+
         if (message.type === 'oma.pair.confirm') {
           const pending = pendingChallenges.get(message.code);
           if (!pending || pending.expiresAt < Date.now()) {
@@ -87,6 +140,14 @@ pairingServer.on('connection', (connection) => {
           }
 
           pendingChallenges.delete(message.code);
+          savePairedDevice({
+            connected: true,
+            computerId,
+            computerName,
+            mobileDevice: message.device ?? {},
+            pairedAt: new Date().toISOString(),
+            lastSeen: new Date().toISOString(),
+          });
           connection.write(`${JSON.stringify({
             type: 'oma.pair.accepted',
             version: PROTOCOL_VERSION,
@@ -127,6 +188,8 @@ server.bind(DISCOVERY_PORT, '0.0.0.0', () => {
 pairingServer.listen(SERVICE_PORT, '0.0.0.0', () => {
   console.log(`Oma Connect pairing service listening on TCP ${SERVICE_PORT}`);
 });
+
+setInterval(markStaleDeviceOffline, 5_000);
 
 function shutdown() {
   server.close(() => process.exit(0));
