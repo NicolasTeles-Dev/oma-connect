@@ -1,0 +1,8 @@
+{
+  "name": "oma-connect-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node oma-connect-service.mjs"
+  }
+}

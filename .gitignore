@@ -2,3 +2,4 @@
 .agents/
 .aws/
 .codex/
+service/node_modules/

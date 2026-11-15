@@ -32,14 +32,15 @@ privileged commands, or extra dependencies are used by this scaffold.
 The intended architecture is:
 
 ```text
-BarWidget.qml -> Panel.qml -> connection service / app
+Flutter mobile app -> connection service -> Panel.qml
 ```
 
 The bar and panel already expose the lifecycle methods Omarchy expects. The
 connection state is currently local to the UI so the transport can be designed
 without rewriting the plugin shell.
 
-`DeviceModel.qml` defines the first device data contract. Set `demoMode` to
+`service/` contains the Linux-side discovery service distributed with the
+plugin. `DeviceModel.qml` defines the first device data contract. Set `demoMode` to
 `true` to preview the temporary `Oma Demo` fixture while styling the connected
 state. It defaults to `false` so the pairing screen is the normal empty state.
 
