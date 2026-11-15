@@ -38,3 +38,11 @@ BarWidget.qml -> Panel.qml -> connection service / app
 The bar and panel already expose the lifecycle methods Omarchy expects. The
 connection state is currently local to the UI so the transport can be designed
 without rewriting the plugin shell.
+
+`DeviceModel.qml` defines the first device data contract. Set `demoMode` to
+`true` to preview the temporary `Oma Demo` fixture while styling the connected
+state. It defaults to `false` so the pairing screen is the normal empty state.
+
+When no device is available, the panel shows a pairing mode switch. It currently
+changes local UI state only; the future connection service will use that state
+to start and stop discovery.
