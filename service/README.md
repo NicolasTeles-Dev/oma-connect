@@ -74,5 +74,15 @@ updates `lastSeen` on each heartbeat so the panel can distinguish a live app
 from a device that was paired previously. If no heartbeat arrives for 30
 seconds, the service marks the device as disconnected.
 
+Authenticated actions use the same paired token. The first supported action is
+screen locking:
+
+```json
+{"type":"oma.action.request","version":1,"requestId":"...","token":"...","action":"lock.screen"}
+```
+
+The response is an `oma.action.response` with `ok: true` after
+`omarchy-system-lock` succeeds.
+
 The service also accepts `--forget` to remove the saved paired device. The
 plugin uses this command from its panel instead of requiring a terminal.

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import crypto from 'node:crypto';
+import childProcess from 'node:child_process';
 import dgram from 'node:dgram';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -150,6 +151,47 @@ function processApproval() {
   log(`Pairing approved for ${pending.connection.remoteAddress}`);
 }
 
+function handleAction(connection, message) {
+  const paired = readPairedDevice();
+  const requestId = message.requestId ?? null;
+  const respond = (ok, data = {}, error = null) => {
+    connection.write(`${JSON.stringify({
+      type: 'oma.action.response',
+      version: PROTOCOL_VERSION,
+      requestId,
+      ok,
+      data,
+      ...(error ? { error } : {}),
+    })}\n`);
+  };
+
+  if (!paired?.authToken || message.token !== paired.authToken) {
+    respond(false, {}, 'unauthorized');
+    return;
+  }
+
+  if (message.action !== 'lock.screen') {
+    respond(false, {}, 'unsupported_action');
+    return;
+  }
+
+  log(`Action ${message.action} requested (${requestId ?? 'no-request-id'})`);
+  const lock = childProcess.spawn('omarchy-system-lock', [], {
+    stdio: 'ignore',
+  });
+  lock.once('error', (error) => {
+    log(`Action failed: ${error.message}`);
+    respond(false, {}, 'lock_command_failed');
+  });
+  lock.once('exit', (code) => {
+    if (code === 0) respond(true, { action: 'lock.screen' });
+    else {
+      log(`Action exited with code ${code}`);
+      respond(false, {}, 'lock_command_failed');
+    }
+  });
+}
+
 function log(...values) {
   if (verbose) console.log(new Date().toISOString(), ...values);
 }
@@ -228,6 +270,11 @@ pairingServer.on('connection', (connection) => {
             pairedAt: message.pairedAt ?? new Date().toISOString(),
             lastSeen: new Date().toISOString(),
           });
+          continue;
+        }
+
+        if (message.type === 'oma.action.request') {
+          handleAction(connection, message);
           continue;
         }
 
