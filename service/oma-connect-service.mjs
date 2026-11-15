@@ -26,6 +26,7 @@ const stateDirectory = path.join(
   'oma-connect',
 );
 const statePath = path.join(stateDirectory, 'paired-device.json');
+const approvalPath = path.join(stateDirectory, 'pairing-approval.json');
 const heartbeatTimeout = 30_000;
 
 if (args.includes('--forget')) {
@@ -36,6 +37,24 @@ if (args.includes('--forget')) {
     if (error.code !== 'ENOENT') throw error;
     console.log('Oma Connect had no paired device');
   }
+  try { fs.unlinkSync(approvalPath); } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  process.exit(0);
+}
+
+if (args.includes('--approve') || args.includes('--reject')) {
+  const action = args.includes('--approve') ? 'approve' : 'reject';
+  const actionIndex = args.indexOf(`--${action}`);
+  const code = args[actionIndex + 1];
+  if (!/^\d{6}$/.test(code || '')) {
+    console.error(`Usage: oma-connect-service.mjs --${action} <6-digit-code>`);
+    process.exit(2);
+  }
+  fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(approvalPath, `${JSON.stringify({ code, action })}\n`, { mode: 0o600 });
+  fs.chmodSync(approvalPath, 0o600);
+  console.log(`Oma Connect pairing ${action} requested for ${code}`);
   process.exit(0);
 }
 
@@ -57,6 +76,19 @@ function readPairedDevice() {
   }
 }
 
+function writePendingPairing(code, device) {
+  const state = readPairedDevice() ?? {};
+  savePairedDevice({
+    ...state,
+    connected: false,
+    pendingPairing: {
+      code,
+      device,
+      requestedAt: new Date().toISOString(),
+    },
+  });
+}
+
 function markStaleDeviceOffline() {
   const state = readPairedDevice();
   if (!state || state.connected !== true || !state.lastSeen) return;
@@ -65,6 +97,57 @@ function markStaleDeviceOffline() {
     savePairedDevice({ ...state, connected: false });
     log('Marked paired device as disconnected');
   }
+}
+
+function processApproval() {
+  let approval;
+  try {
+    approval = JSON.parse(fs.readFileSync(approvalPath, 'utf8'));
+  } catch {
+    return;
+  }
+
+  try { fs.unlinkSync(approvalPath); } catch { /* already consumed */ }
+
+  const code = String(approval?.code ?? '');
+  const pending = pendingChallenges.get(code);
+  if (!pending || pending.expiresAt < Date.now()) {
+    log(`Ignored expired or unknown pairing approval ${code}`);
+    return;
+  }
+
+  pendingChallenges.delete(code);
+  if (approval.action === 'reject') {
+    const state = readPairedDevice() ?? {};
+    const { pendingPairing, ...rest } = state;
+    savePairedDevice({ ...rest, connected: false });
+    pending.connection.write(`${JSON.stringify({
+      type: 'oma.pair.rejected',
+      version: PROTOCOL_VERSION,
+      reason: 'rejected_on_computer',
+    })}\n`);
+    log(`Pairing rejected for ${pending.connection.remoteAddress}`);
+    return;
+  }
+
+  const authToken = crypto.randomBytes(32).toString('hex');
+  savePairedDevice({
+    connected: true,
+    computerId,
+    computerName,
+    authToken,
+    mobileDevice: pending.device,
+    pairedAt: new Date().toISOString(),
+    lastSeen: new Date().toISOString(),
+  });
+  pending.connection.write(`${JSON.stringify({
+    type: 'oma.pair.accepted',
+    version: PROTOCOL_VERSION,
+    computerId,
+    computerName,
+    token: authToken,
+  })}\n`);
+  log(`Pairing approved for ${pending.connection.remoteAddress}`);
 }
 
 function log(...values) {
@@ -128,10 +211,19 @@ pairingServer.on('connection', (connection) => {
         }
 
         if (message.type === 'oma.heartbeat') {
+          const paired = readPairedDevice();
+          if (!paired?.authToken || message.token !== paired.authToken) {
+            connection.write(`${JSON.stringify({
+              type: 'oma.error',
+              code: 'unauthorized',
+            })}\n`);
+            continue;
+          }
           savePairedDevice({
             connected: true,
             computerId,
             computerName,
+            authToken: paired.authToken,
             mobileDevice: message.device ?? {},
             pairedAt: message.pairedAt ?? new Date().toISOString(),
             lastSeen: new Date().toISOString(),
@@ -139,48 +231,22 @@ pairingServer.on('connection', (connection) => {
           continue;
         }
 
-        if (message.type === 'oma.pair.confirm') {
-          const pending = pendingChallenges.get(message.code);
-          if (!pending || pending.expiresAt < Date.now()) {
-            connection.write(`${JSON.stringify({
-              type: 'oma.pair.rejected',
-              version: PROTOCOL_VERSION,
-              reason: 'invalid_or_expired_code',
-            })}\n`);
-            continue;
-          }
-
-          pendingChallenges.delete(message.code);
-          savePairedDevice({
-            connected: true,
-            computerId,
-            computerName,
-            mobileDevice: message.device ?? {},
-            pairedAt: new Date().toISOString(),
-            lastSeen: new Date().toISOString(),
-          });
-          connection.write(`${JSON.stringify({
-            type: 'oma.pair.accepted',
-            version: PROTOCOL_VERSION,
-            computerId,
-            computerName,
-          })}\n`);
-          log(`Pairing confirmed by ${connection.remoteAddress}`);
-          continue;
-        }
-
         if (message.type !== 'oma.pair.request') continue;
 
         const code = String(crypto.randomInt(100000, 1000000));
-        pendingChallenges.set(code, { expiresAt: Date.now() + 120000 });
+        pendingChallenges.set(code, {
+          expiresAt: Date.now() + 120000,
+          connection,
+          device: message.device ?? {},
+        });
+        writePendingPairing(code, message.device ?? {});
         connection.write(`${JSON.stringify({
-          type: 'oma.pair.challenge',
+          type: 'oma.pair.pending',
           version: PROTOCOL_VERSION,
           computerId,
           computerName,
-          code,
         })}\n`);
-        log(`Pairing challenge ${code} sent to ${connection.remoteAddress}`);
+        log(`Pairing request ${code} is waiting for desktop approval`);
       } catch {
         connection.write(`${JSON.stringify({
           type: 'oma.error',
@@ -201,6 +267,7 @@ pairingServer.listen(SERVICE_PORT, '0.0.0.0', () => {
 });
 
 setInterval(markStaleDeviceOffline, 5_000);
+setInterval(processApproval, 500);
 
 function shutdown() {
   server.close(() => process.exit(0));

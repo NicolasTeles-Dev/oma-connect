@@ -17,6 +17,8 @@ QtObject {
   property string lastUpdated: demoMode ? "Just now" : ""
   property bool pairingMode: false
   property bool paused: false
+  property string pendingPairingCode: ""
+  property string pendingDeviceName: ""
 
   function clear() {
     hasDevice = false
@@ -27,6 +29,8 @@ QtObject {
     batteryPercent = -1
     charging = false
     lastUpdated = ""
+    pendingPairingCode = ""
+    pendingDeviceName = ""
   }
 
   readonly property string stateHome:
@@ -36,6 +40,11 @@ QtObject {
   function applyState(value) {
     try {
       var state = JSON.parse(value || "{}")
+      pendingPairingCode = state.pendingPairing && state.pendingPairing.code
+        ? String(state.pendingPairing.code) : ""
+      pendingDeviceName = state.pendingPairing && state.pendingPairing.device
+        && state.pendingPairing.device.name
+        ? String(state.pendingPairing.device.name) : ""
       if (!state.mobileDevice && state.connected !== true) return
       hasDevice = true
       demoMode = false
@@ -57,8 +66,20 @@ QtObject {
     path: root.statePath
     watchChanges: true
     printErrors: false
+    // FileView watchers can go quiet when the service rewrites the same state
+    // file repeatedly (heartbeats do this every few seconds). Explicitly
+    // reload on the change signal and from the small polling timer below so
+    // the panel reflects connection/battery changes without a shell restart.
+    onFileChanged: reload()
     onLoaded: root.applyState(text())
     onLoadFailed: root.clear()
+  }
+
+  property Timer refreshTimer: Timer {
+    interval: 1000
+    running: true
+    repeat: true
+    onTriggered: root.stateFile.reload()
   }
 
   function togglePairingMode() {
@@ -70,6 +91,8 @@ QtObject {
     if (!hasDevice) return "No device connected"
     return connected ? "Connected" : "Disconnected"
   }
+
+  readonly property bool hasPendingPairing: pendingPairingCode !== ""
 
   readonly property string batteryText: {
     if (batteryPercent < 0) return "Battery unavailable"

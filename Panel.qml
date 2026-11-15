@@ -22,7 +22,7 @@ Panel {
   readonly property string servicePath:
     Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.nicolas.oma-connect/service/oma-connect-service.mjs"
   readonly property bool serviceRequired:
-    !device.paused && (device.pairingMode || device.hasDevice)
+    !device.paused && (device.pairingMode || device.hasDevice || device.hasPendingPairing)
 
   DeviceModel {
     id: device
@@ -46,6 +46,18 @@ Panel {
     onExited: device.clear()
   }
 
+  Process {
+    id: approveProcess
+    command: ["node", root.servicePath, "--approve", device.pendingPairingCode]
+    onExited: device.stateFile.reload()
+  }
+
+  Process {
+    id: rejectProcess
+    command: ["node", root.servicePath, "--reject", device.pendingPairingCode]
+    onExited: device.stateFile.reload()
+  }
+
   function forgetDevice() {
     device.paused = false
     device.pairingMode = false
@@ -54,6 +66,7 @@ Panel {
   }
 
   function open() {
+    device.stateFile.reload()
     root.controller.show()
   }
 
@@ -74,7 +87,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(280))
+    contentWidth: panel.fittedContentWidth(Style.space(360))
     // Keep enough room for the demo device details while the model is still
     // local. The fitted height still adapts when the real service is added.
     contentHeight: panel.fittedContentHeight(Math.max(content.implicitHeight, Style.space(180)))
@@ -136,34 +149,59 @@ Panel {
           }
         }
 
-        Text {
+        Grid {
           visible: device.hasDevice
           width: parent.width
-          text: device.hasDevice
-            ? device.deviceName + " · " + device.deviceType
-            : root.connectionMessage
-          color: root.panelForeground
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Style.font.subtitle
-          wrapMode: Text.WordWrap
-        }
+          columns: 2
+          columnSpacing: Style.space(8)
+          rowSpacing: Style.space(8)
 
-        Text {
-          visible: device.hasDevice
-          width: parent.width
-          text: "Battery: " + device.batteryText
-          color: root.panelForeground
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Style.font.subtitle
-        }
+          Repeater {
+            model: [
+              { label: "DEVICE", value: device.deviceName },
+              { label: "PLATFORM", value: device.deviceType },
+              { label: "BATTERY", value: device.batteryText },
+              { label: "UPDATED", value: device.lastUpdated }
+            ]
 
-        Text {
-          visible: device.hasDevice && device.lastUpdated !== ""
-          width: parent.width
-          text: "Updated: " + device.lastUpdated
-          color: root.panelForeground
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Style.font.subtitle
+            delegate: Rectangle {
+              required property var modelData
+              width: (parent.width - Style.space(8)) / 2
+              height: Style.space(48)
+              radius: Style.space(3)
+              color: Qt.rgba(
+                root.panelForeground.r,
+                root.panelForeground.g,
+                root.panelForeground.b,
+                0.06
+              )
+
+              Column {
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(10)
+                anchors.rightMargin: Style.space(10)
+                anchors.topMargin: Style.space(7)
+                spacing: Style.space(2)
+
+                Text {
+                  text: modelData.label
+                  color: Commons.Color.muted
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+
+                Text {
+                  width: parent.width
+                  text: modelData.value
+                  color: root.panelForeground
+                  elide: Text.ElideRight
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.subtitle
+                }
+              }
+            }
+          }
         }
 
         Column {
@@ -237,6 +275,112 @@ Panel {
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.subtitle
             wrapMode: Text.WordWrap
+          }
+
+          Rectangle {
+            visible: device.hasPendingPairing
+            width: parent.width
+            height: Style.space(92)
+            radius: Style.space(3)
+            color: Qt.rgba(
+              Commons.Color.accent.r,
+              Commons.Color.accent.g,
+              Commons.Color.accent.b,
+              0.10
+            )
+
+            Column {
+              anchors.fill: parent
+              anchors.margins: Style.space(10)
+              spacing: Style.space(4)
+
+              Text {
+                text: "Pairing request"
+                color: root.panelForeground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.subtitle
+                font.bold: true
+              }
+
+              Text {
+                width: parent.width
+                text: device.pendingDeviceName !== ""
+                  ? "Allow " + device.pendingDeviceName + " to connect?"
+                  : "A device is requesting to connect."
+                color: root.panelForeground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+              }
+
+              Text {
+                text: "Code: " + device.pendingPairingCode
+                color: root.panelForeground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.subtitle
+                font.bold: true
+              }
+            }
+          }
+
+          Row {
+            visible: device.hasPendingPairing
+            width: parent.width
+            spacing: Style.space(8)
+
+            Rectangle {
+              width: (parent.width - Style.space(8)) / 2
+              height: Style.space(40)
+              radius: Style.space(3)
+              color: Qt.rgba(
+                Commons.Color.accent.r,
+                Commons.Color.accent.g,
+                Commons.Color.accent.b,
+                0.22
+              )
+
+              Text {
+                anchors.centerIn: parent
+                text: "Approve"
+                color: root.panelForeground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.subtitle
+                font.bold: true
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                enabled: device.hasPendingPairing && !approveProcess.running && !rejectProcess.running
+                onClicked: approveProcess.running = true
+              }
+            }
+
+            Rectangle {
+              width: (parent.width - Style.space(8)) / 2
+              height: Style.space(40)
+              radius: Style.space(3)
+              color: Qt.rgba(
+                Commons.Color.urgent.r,
+                Commons.Color.urgent.g,
+                Commons.Color.urgent.b,
+                0.14
+              )
+
+              Text {
+                anchors.centerIn: parent
+                text: "Reject"
+                color: root.panelForeground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.subtitle
+                font.bold: true
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                enabled: device.hasPendingPairing && !approveProcess.running && !rejectProcess.running
+                onClicked: rejectProcess.running = true
+              }
+            }
           }
 
           Rectangle {
